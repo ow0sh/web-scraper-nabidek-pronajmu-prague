@@ -1,134 +1,109 @@
-#!/usr/bin/evn python3
+#!/usr/bin/env python3
 import logging
+import re
 from datetime import datetime
-from time import time
+from time import sleep
 
-import discord
-from discord.ext import tasks
-
-from config import *
-from discord_logger import DiscordLogger
+from config import config
 from offers_storage import OffersStorage
 from scrapers.rental_offer import RentalOffer
 from scrapers_manager import create_scrapers, fetch_latest_offers
-from datetime import datetime
-import asyncio
-
-def get_current_daytime() -> bool: return datetime.now().hour in range(6, 22)
+from telegram_logger import TelegramLogHandler
+from telegram_notifier import TelegramNotifier
 
 
-client = discord.Client(intents=discord.Intents.default())
-daytime = get_current_daytime()
-interval_time = config.refresh_interval_daytime_minutes if daytime else config.refresh_interval_nighttime_minutes
+def get_current_daytime() -> bool:
+    return datetime.now().hour in range(6, 22)
 
-scrapers = create_scrapers(config.dispositions)
 
-@client.event
-async def on_ready():
-    global channel, storage
+def get_refresh_interval_minutes() -> int:
+    if get_current_daytime():
+        return config.refresh_interval_daytime_minutes
 
-    dev_channel = client.get_channel(config.discord.dev_channel)
-    channel = client.get_channel(config.discord.offers_channel)
-    storage = OffersStorage(config.found_offers_file)
+    return config.refresh_interval_nighttime_minutes
 
-    if not config.debug:
-        discord_error_logger = DiscordLogger(client, dev_channel, logging.ERROR)
-        logging.getLogger().addHandler(discord_error_logger)
-    else:
-        logging.info("Discord logger is inactive in debug mode")
 
-    logging.info("Available scrapers: " + ", ".join([s.name for s in scrapers]))
+def extract_offer_price(price: int | str) -> int | None:
+    if isinstance(price, int):
+        return price
 
-    logging.info("Fetching latest offers every {} minutes".format(interval_time))
+    match = re.search(r"\d[\d\s\xa0]*", str(price))
+    if match is None:
+        return None
 
-    process_latest_offers.start()
+    digits = re.sub(r"\D", "", match.group())
+    return int(digits) if digits else None
 
-@tasks.loop(minutes=interval_time)
-async def process_latest_offers():
+
+def offer_matches_price_filter(offer: RentalOffer) -> bool:
+    if config.min_price is None and config.max_price is None:
+        return True
+
+    offer_price = extract_offer_price(offer.price)
+    if offer_price is None:
+        return False
+
+    if config.min_price is not None and offer_price < config.min_price:
+        return False
+
+    if config.max_price is not None and offer_price > config.max_price:
+        return False
+
+    return True
+
+
+def process_latest_offers(storage: OffersStorage, scrapers, notifier: TelegramNotifier) -> None:
     logging.info("Fetching offers")
 
     new_offers: list[RentalOffer] = []
+    filtered_out_offers = 0
     for offer in fetch_latest_offers(scrapers):
+        if not offer_matches_price_filter(offer):
+            filtered_out_offers += 1
+            continue
+
         if not storage.contains(offer):
             new_offers.append(offer)
 
     first_time = storage.first_time
     storage.save_offers(new_offers)
 
-    logging.info("Offers fetched (new: {})".format(len(new_offers)))
+    logging.info("Offers fetched (new: %s, filtered by price: %s)", len(new_offers), filtered_out_offers)
 
-    if not first_time:
-        def chunk_offers(offers, size):
-            for i in range(0, len(offers), size):
-                yield offers[i:i + size]
-
-        for offer_batch in chunk_offers(new_offers, config.embed_batch_size):
-            embeds = []
-
-            for offer in offer_batch:
-                embed = discord.Embed(
-                    title=offer.title,
-                    url=offer.link,
-                    description=offer.location,
-                    timestamp=datetime.utcnow(),
-                    color=offer.scraper.color
-                )
-                embed.add_field(name="Cena", value=str(offer.price) + " Kč")
-                embed.set_author(name=offer.scraper.name, icon_url=offer.scraper.logo_url)
-                embed.set_image(url=offer.image_url)
-
-                embeds.append(embed)
-
-            await retry_until_successful_send(channel, embeds)
-            await asyncio.sleep(1.5)
-    else:
+    if not first_time and new_offers:
+        notifier.send_offers(new_offers)
+    elif first_time:
         logging.info("No previous offers, first fetch is running silently")
 
-    global daytime, interval_time
-    if daytime != get_current_daytime():  # Pokud stary daytime neodpovida novemu
-
-        daytime = not daytime  # Zneguj daytime (podle podminky se zmenil)
-
-        interval_time = config.refresh_interval_daytime_minutes if daytime else config.refresh_interval_nighttime_minutes
-
-        logging.info("Fetching latest offers every {} minutes".format(interval_time))
-        process_latest_offers.change_interval(minutes=interval_time)
-
-    await retry_until_successful_edit(channel, f"Last update <t:{int(time())}:R>")
+    notifier.update_status(datetime.now().strftime("Last update: %Y-%m-%d %H:%M:%S"))
 
 
-async def retry_until_successful_send(channel: discord.TextChannel, embeds: list[discord.Embed], delay: float = 5.0):
-    """Retry sending a message with embeds until it succeeds."""
+def run() -> None:
+    scrapers = create_scrapers(config.dispositions)
+    storage = OffersStorage(config.found_offers_file)
+    notifier = TelegramNotifier(config.telegram.bot_token, config.telegram.chat_id)
+    interval_minutes = get_refresh_interval_minutes()
+
+    if not config.debug:
+        logging.getLogger().addHandler(TelegramLogHandler(notifier, logging.ERROR))
+    else:
+        logging.info("Telegram logger is inactive in debug mode")
+
+    logging.info("Available scrapers: %s", ", ".join(scraper.name for scraper in scrapers))
+    logging.info("Fetching latest offers every %s minutes", interval_minutes)
+
+    if config.min_price is not None or config.max_price is not None:
+        logging.info("Price filter active (min: %s, max: %s)", config.min_price, config.max_price)
+
     while True:
-        try:
-            await channel.send(embeds=embeds)
-            logging.info("Embeds successfully sent.")
-            return
-        except discord.errors.DiscordServerError as e:
-            logging.warning(f"Discord server error while sending embeds: {e}. Retrying in {delay:.1f}s.")
-        except discord.errors.HTTPException as e:
-            logging.warning(f"HTTPException while sending embeds: {e}. Retrying in {delay:.1f}s.")
-        except Exception as e:
-            logging.exception(f"Unexpected error while sending embeds: {e}. Retrying in {delay:.1f}s.")
-            raise e
-        await asyncio.sleep(delay)
+        process_latest_offers(storage, scrapers, notifier)
 
+        next_interval_minutes = get_refresh_interval_minutes()
+        if next_interval_minutes != interval_minutes:
+            interval_minutes = next_interval_minutes
+            logging.info("Fetching latest offers every %s minutes", interval_minutes)
 
-async def retry_until_successful_edit(channel: discord.TextChannel, topic: str, delay: float = 5.0):
-    """Retry editing a channel topic until it succeeds."""
-    while True:
-        try:
-            await channel.edit(topic=topic)
-            logging.info(f"Channel topic successfully updated to: {topic}")
-            return
-        except discord.errors.DiscordServerError as e:
-            logging.warning(f"Discord server error while editing topic: {e}. Retrying in {delay:.1f}s.")
-        except discord.errors.HTTPException as e:
-            logging.warning(f"HTTPException while editing topic: {e}. Retrying in {delay:.1f}s.")
-        except Exception as e:
-            logging.exception(f"Unexpected error while editing channel topic: {e}. Retrying in {delay:.1f}s.")
-            raise e
-        await asyncio.sleep(delay)
+        sleep(interval_minutes * 60)
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -138,4 +113,4 @@ if __name__ == "__main__":
 
     logging.debug("Running in debug mode")
 
-    client.run(config.discord.token, log_level=logging.INFO)
+    run()

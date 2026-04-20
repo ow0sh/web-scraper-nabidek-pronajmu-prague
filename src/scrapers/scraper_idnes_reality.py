@@ -37,7 +37,7 @@ class ScraperIdnesReality(ScraperBase):
 
 
     def build_response(self) -> requests.Response:
-        url = "https://reality.idnes.cz/s/pronajem/byty/brno-mesto/?"
+        url = "https://reality.idnes.cz/s/pronajem/byty/praha/?"
         url += "&".join(self.get_dispositions_data())
 
         logging.debug("iDNES reality request: %s", url)

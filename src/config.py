@@ -29,6 +29,18 @@ _str_to_disposition_map = {
     "others": Disposition.FLAT_OTHERS
 }
 
+
+def optional_int_converter(raw_value: str | int | None) -> int | None:
+    if raw_value is None:
+        return None
+
+    value = str(raw_value).strip()
+    if not value:
+        return None
+
+    return int(value)
+
+
 def dispositions_converter(raw_disps: str):
     return functools.reduce(operator.or_, map(lambda d: _str_to_disposition_map[d], raw_disps.split(",")), Disposition.NONE)
 
@@ -40,14 +52,14 @@ class Config:
     refresh_interval_daytime_minutes: int = environ.var(converter=int)
     refresh_interval_nighttime_minutes: int = environ.var(converter=int)
     dispositions: Disposition = environ.var(converter=dispositions_converter)
-    embed_batch_size: int = environ.var(converter=int, default=10)
+    min_price: int | None = environ.var(default=None, converter=optional_int_converter)
+    max_price: int | None = environ.var(default=None, converter=optional_int_converter)
 
     @environ.config()
-    class Discord:
-        token = environ.var()
-        offers_channel = environ.var(converter=int)
-        dev_channel = environ.var(converter=int)
+    class Telegram:
+        bot_token = environ.var()
+        chat_id = environ.var()
 
-    discord: Discord = environ.group(Discord)
+    telegram: Telegram = environ.group(Telegram)
 
 config: Config = Config.from_environ()

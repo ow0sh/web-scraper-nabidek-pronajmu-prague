@@ -33,7 +33,7 @@ class ScraperRealcity(ScraperBase):
 
 
     def build_response(self) -> requests.Response:
-        url = "https://www.realcity.cz/pronajem-bytu/brno-mesto-68/?sp=%7B%22locality%22%3A%5B68%5D%2C%22transactionTypes%22%3A%5B%22rent%22%5D%2C%22propertyTypes%22%3A%5B%7B%22propertyType%22%3A%22flat%22%2C%22options%22%3A%7B%22disposition%22%3A%5B"
+        url = "https://www.realcity.cz/pronajem-bytu/hlavni-mesto-praha-1/?sp=%7B%22locality%22%3A%5B1%5D%2C%22transactionTypes%22%3A%5B%22rent%22%5D%2C%22propertyTypes%22%3A%5B%7B%22propertyType%22%3A%22flat%22%2C%22options%22%3A%7B%22disposition%22%3A%5B"
         url += "%2C".join(self.get_dispositions_data())
         url += "%5D%7D%7D%5D%7D"
 

@@ -1,11 +1,17 @@
-.PHONY: install debug
+.PHONY: install run debug
 
-install:
-	python3 -m pip install -r requirements.txt
+VENV := .venv
+PYTHON := $(VENV)/bin/python
+PIP := $(PYTHON) -m pip
 
-run:
-	python3 src/main.py
+$(PYTHON):
+	python3 -m venv $(VENV)
 
-debug:
-	DEBUG=1
-	python3 src/main.py
+install: $(PYTHON)
+	$(PIP) install -r requirements.txt
+
+run: $(PYTHON)
+	$(PYTHON) src/main.py
+
+debug: $(PYTHON)
+	DEBUG=1 $(PYTHON) src/main.py
