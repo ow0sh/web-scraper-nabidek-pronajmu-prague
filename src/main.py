@@ -3,6 +3,7 @@ import logging
 import re
 from datetime import datetime
 from time import sleep
+from typing import Any
 
 from config import config
 from offers_storage import OffersStorage
@@ -10,6 +11,45 @@ from scrapers.rental_offer import RentalOffer
 from scrapers_manager import create_scrapers, fetch_latest_offers
 from telegram_logger import TelegramLogHandler
 from telegram_notifier import TelegramNotifier
+
+
+class SecretRedactionFilter(logging.Filter):
+    def __init__(self, secrets: list[str]) -> None:
+        super().__init__()
+        self._secrets = [secret for secret in secrets if secret]
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = self._redact(record.msg)
+        if record.args:
+            record.args = self._redact(record.args)
+        return True
+
+    def _redact(self, value: Any) -> Any:
+        if isinstance(value, str):
+            redacted = value
+            for secret in self._secrets:
+                redacted = redacted.replace(secret, "<redacted>")
+            return redacted
+
+        if isinstance(value, tuple):
+            return tuple(self._redact(item) for item in value)
+
+        if isinstance(value, list):
+            return [self._redact(item) for item in value]
+
+        if isinstance(value, dict):
+            return {key: self._redact(item) for key, item in value.items()}
+
+        return value
+
+
+LOG_REDACTION_FILTER = SecretRedactionFilter([config.telegram.bot_token])
+
+
+def install_log_redaction() -> None:
+    for handler in logging.getLogger().handlers:
+        if LOG_REDACTION_FILTER not in handler.filters:
+            handler.addFilter(LOG_REDACTION_FILTER)
 
 
 def get_current_daytime() -> bool:
@@ -52,12 +92,39 @@ def offer_matches_price_filter(offer: RentalOffer) -> bool:
     return True
 
 
+def format_status_message(
+    fetched_offers_count: int,
+    new_offers_count: int,
+    filtered_out_offers: int,
+    sent_offers_count: int,
+    first_time: bool,
+) -> str:
+    matching_offers_count = max(fetched_offers_count - filtered_out_offers, 0)
+    lines = [
+        "<b>Run finished</b>",
+        datetime.now().strftime("Time: %Y-%m-%d %H:%M:%S"),
+        f"Offers fetched: {fetched_offers_count}",
+        f"Matching price filter: {matching_offers_count}",
+        f"Filtered by price: {filtered_out_offers}",
+        f"New offers: {new_offers_count}",
+    ]
+
+    if first_time:
+        lines.append("Sent to Telegram: 0 (first run stays silent)")
+    else:
+        lines.append(f"Sent to Telegram: {sent_offers_count}")
+
+    lines.append(f"Next run in ~{get_refresh_interval_minutes()} minutes")
+    return "\n".join(lines)
+
+
 def process_latest_offers(storage: OffersStorage, scrapers, notifier: TelegramNotifier) -> None:
     logging.info("Fetching offers")
 
+    fetched_offers = fetch_latest_offers(scrapers)
     new_offers: list[RentalOffer] = []
     filtered_out_offers = 0
-    for offer in fetch_latest_offers(scrapers):
+    for offer in fetched_offers:
         if not offer_matches_price_filter(offer):
             filtered_out_offers += 1
             continue
@@ -68,14 +135,29 @@ def process_latest_offers(storage: OffersStorage, scrapers, notifier: TelegramNo
     first_time = storage.first_time
     storage.save_offers(new_offers)
 
-    logging.info("Offers fetched (new: %s, filtered by price: %s)", len(new_offers), filtered_out_offers)
+    logging.info(
+        "Offers fetched (total: %s, new: %s, filtered by price: %s)",
+        len(fetched_offers),
+        len(new_offers),
+        filtered_out_offers,
+    )
 
+    sent_offers_count = 0
     if not first_time and new_offers:
         notifier.send_offers(new_offers)
+        sent_offers_count = len(new_offers)
     elif first_time:
         logging.info("No previous offers, first fetch is running silently")
 
-    notifier.update_status(datetime.now().strftime("Last update: %Y-%m-%d %H:%M:%S"))
+    notifier.update_status(
+        format_status_message(
+            fetched_offers_count=len(fetched_offers),
+            new_offers_count=len(new_offers),
+            filtered_out_offers=filtered_out_offers,
+            sent_offers_count=sent_offers_count,
+            first_time=first_time,
+        )
+    )
 
 
 def run() -> None:
@@ -88,6 +170,8 @@ def run() -> None:
         logging.getLogger().addHandler(TelegramLogHandler(notifier, logging.ERROR))
     else:
         logging.info("Telegram logger is inactive in debug mode")
+
+    install_log_redaction()
 
     logging.info("Available scrapers: %s", ", ".join(scraper.name for scraper in scrapers))
     logging.info("Fetching latest offers every %s minutes", interval_minutes)
@@ -110,6 +194,7 @@ if __name__ == "__main__":
         level=(logging.DEBUG if config.debug else logging.INFO),
         format='%(asctime)s - [%(levelname)s] %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S')
+    install_log_redaction()
 
     logging.debug("Running in debug mode")
 

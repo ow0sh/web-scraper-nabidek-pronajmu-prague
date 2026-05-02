@@ -3,6 +3,7 @@ author: Mark Barzali
 """
 
 import json
+import logging
 from abc import ABC as abstract
 from typing import ClassVar
 
@@ -53,8 +54,8 @@ class ScraperBezrealitky(ScraperBase):
 
     def _patch_config(self):
         match = {
-            "estateType": self.ESTATE_TYPE,
-            "offerType": self.OFFER_TYPE,
+            "estateType": [self.ESTATE_TYPE],
+            "offerType": [self.OFFER_TYPE],
             "disposition": self.get_dispositions_data(),
             "regionOsmIds": [self.PRAGUE],
         }
@@ -66,17 +67,42 @@ class ScraperBezrealitky(ScraperBase):
 
     def build_response(self) -> requests.Response:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Origin": self.base_url,
+            "Referer": f"{self.base_url}/",
         }
 
         return requests.post(
             url=f"{ScraperBezrealitky.API}{ScraperBezrealitky.Routes.GRAPHQL}",
             json=self._config,
-            headers=headers
+            headers=headers,
+            timeout=30,
         )
 
     def get_latest_offers(self) -> list[RentalOffer]:
-        response = self.build_response().json()
+        try:
+            response = self.build_response()
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            logging.warning("%s request failed: %s", self.name, exc)
+            return []
+
+        try:
+            payload = response.json()
+        except ValueError:
+            logging.warning(
+                "%s returned non-JSON response (status %s): %s",
+                self.name,
+                response.status_code,
+                response.text[:200],
+            )
+            return []
+
+        items = payload.get("data", {}).get("listAdverts", {}).get("list")
+        if not isinstance(items, list):
+            logging.warning("%s response is missing the adverts list", self.name)
+            return []
 
         return [  # type: list[RentalOffer]
             RentalOffer(
@@ -87,5 +113,5 @@ class ScraperBezrealitky(ScraperBase):
                 price=f"{item['price']} / {item['charges']}",
                 image_url=item["mainImage"]["url"] if item["mainImage"] else "",
             )
-            for item in response["data"]["listAdverts"]["list"]
+            for item in items
         ]

@@ -29,7 +29,6 @@ class TelegramNotifier:
         self.chat_id = chat_id
         self.request_timeout = request_timeout
         self.send_delay_seconds = SEND_DELAY_SECONDS
-        self.status_message_id: int | None = None
         self._last_request_at: float | None = None
 
     def send_offers(self, offers: list[RentalOffer]) -> None:
@@ -40,32 +39,15 @@ class TelegramNotifier:
         self._send_text(self._format_error_text(message), disable_web_page_preview=True)
 
     def update_status(self, message: str) -> None:
-        payload = {
-            "chat_id": self.chat_id,
-            "text": self._truncate(message),
-            "disable_web_page_preview": True,
-        }
-
-        if self.status_message_id is None:
-            response = self._request("sendMessage", payload)
-            self.status_message_id = response["message_id"]
-            logging.info("Status message created.")
-            return
-
-        try:
-            self._request(
-                "editMessageText",
-                {
-                    **payload,
-                    "message_id": self.status_message_id,
-                },
-            )
-            logging.info("Status message updated.")
-        except TelegramApiError as exc:
-            logging.warning("Status message update failed: %s. Creating a new one.", exc)
-            response = self._request("sendMessage", payload)
-            self.status_message_id = response["message_id"]
-            logging.info("Status message recreated.")
+        self._request(
+            "sendMessage",
+            {
+                "chat_id": self.chat_id,
+                "text": self._truncate(message),
+                "disable_web_page_preview": True,
+            },
+        )
+        logging.info("Status message sent.")
 
     def _send_offer(self, offer: RentalOffer) -> None:
         text = self._format_offer_text(offer)
