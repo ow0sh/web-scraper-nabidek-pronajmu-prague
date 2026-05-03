@@ -92,32 +92,6 @@ def offer_matches_price_filter(offer: RentalOffer) -> bool:
     return True
 
 
-def format_status_message(
-    fetched_offers_count: int,
-    new_offers_count: int,
-    filtered_out_offers: int,
-    sent_offers_count: int,
-    first_time: bool,
-) -> str:
-    matching_offers_count = max(fetched_offers_count - filtered_out_offers, 0)
-    lines = [
-        "<b>Run finished</b>",
-        datetime.now().strftime("Time: %Y-%m-%d %H:%M:%S"),
-        f"Offers fetched: {fetched_offers_count}",
-        f"Matching price filter: {matching_offers_count}",
-        f"Filtered by price: {filtered_out_offers}",
-        f"New offers: {new_offers_count}",
-    ]
-
-    if first_time:
-        lines.append("Sent to Telegram: 0 (first run stays silent)")
-    else:
-        lines.append(f"Sent to Telegram: {sent_offers_count}")
-
-    lines.append(f"Next run in ~{get_refresh_interval_minutes()} minutes")
-    return "\n".join(lines)
-
-
 def process_latest_offers(storage: OffersStorage, scrapers, notifier: TelegramNotifier) -> None:
     logging.info("Fetching offers")
 
@@ -148,17 +122,6 @@ def process_latest_offers(storage: OffersStorage, scrapers, notifier: TelegramNo
         sent_offers_count = len(new_offers)
     elif first_time:
         logging.info("No previous offers, first fetch is running silently")
-
-    notifier.update_status(
-        format_status_message(
-            fetched_offers_count=len(fetched_offers),
-            new_offers_count=len(new_offers),
-            filtered_out_offers=filtered_out_offers,
-            sent_offers_count=sent_offers_count,
-            first_time=first_time,
-        )
-    )
-
 
 def run() -> None:
     scrapers = create_scrapers(config.dispositions)

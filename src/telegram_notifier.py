@@ -38,17 +38,6 @@ class TelegramNotifier:
     def send_error(self, message: str) -> None:
         self._send_text(self._format_error_text(message), disable_web_page_preview=True)
 
-    def update_status(self, message: str) -> None:
-        self._request(
-            "sendMessage",
-            {
-                "chat_id": self.chat_id,
-                "text": self._truncate(message),
-                "disable_web_page_preview": True,
-            },
-        )
-        logging.info("Status message sent.")
-
     def _send_offer(self, offer: RentalOffer) -> None:
         text = self._format_offer_text(offer)
 
