@@ -17,14 +17,14 @@ from scrapers.scraper_bezrealitky import ScraperBezrealitky
 
 def create_scrapers(dispositions: Disposition) -> list[ScraperBase]:
     return [
-        ScraperEuroBydleni(dispositions),
-        ScraperIdnesReality(dispositions),
-        ScraperRealcity(dispositions),
+        ScraperEuroBydleni(dispositions, config.city),
+        ScraperIdnesReality(dispositions, config.city),
+        ScraperRealcity(dispositions, config.city),
         #ScraperRealingo(dispositions),
-        ScraperRemax(dispositions),
-        ScraperSreality(dispositions),
-        ScraperUlovDomov(dispositions),
-        ScraperBezrealitky(dispositions),
+        ScraperRemax(dispositions, config.city),
+        ScraperSreality(dispositions, config.city),
+        ScraperUlovDomov(dispositions, config.city),
+        ScraperBezrealitky(dispositions, config.city),
     ]
 
 

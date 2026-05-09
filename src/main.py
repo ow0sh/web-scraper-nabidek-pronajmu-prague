@@ -137,6 +137,7 @@ def run() -> None:
     install_log_redaction()
 
     logging.info("Available scrapers: %s", ", ".join(scraper.name for scraper in scrapers))
+    logging.info("Location: %s", config.city.search_label)
     logging.info("Fetching latest offers every %s minutes", interval_minutes)
 
     if config.min_price is not None or config.max_price is not None:

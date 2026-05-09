@@ -3,9 +3,9 @@ Hlídá nové nabídky na populárních realitních serverech.
 
 [**Docker image (aktuální z master větvě) - `janch32/web-scraper-nabidek-pronajmu`**](https://hub.docker.com/r/janch32/web-scraper-nabidek-pronajmu)
 
-*Tato aplikace je aktuálně nastavená pro hledání pronájmu bytů v Praze.*
+*Tato aplikace umí hledat pronájmy v Praze i Plzni.*
 
-Nicméně je možné při spuštění aplikace nakonfigurovat, které  **dispozice bytu** (počet místností) hledat.
+Při spuštění aplikace je možné nakonfigurovat hledané **město** i **dispozice bytu** (počet místností).
 
 ## Podporované realitní servery
 - EuroBydlení
@@ -35,6 +35,7 @@ Aplikace při prvním spuštění nevypíše žádné nabídky, pouze si stáhne
 - `TELEGRAM_BOT_TOKEN` - Token Telegram bota získaný přes `@BotFather`.
 - `TELEGRAM_CHAT_ID` - ID cílového Telegram chatu, kam se mají posílat nabídky, stavové zprávy i chyby programu.
 - `DISPOSITIONS` - Obsahuje seznam dispozic oddělených čárkou. Např.: `DISPOSITIONS=2+kk,2+1,others`
+- `CITY` - Město, pro které se mají nabídky hledat. Podporované hodnoty: `prague`, `praha`, `plzen`, `plzeň`. Výchozí hodnota je `prague`.
 - `MIN_PRICE` - Volitelná minimální cena nájmu v Kč. Nabídky s nižší cenou se přeskočí.
 - `MAX_PRICE` - Volitelná maximální cena nájmu v Kč. Nabídky s vyšší cenou se přeskočí.
 

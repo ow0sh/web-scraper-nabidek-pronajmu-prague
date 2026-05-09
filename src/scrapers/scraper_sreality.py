@@ -109,7 +109,10 @@ class ScraperSreality(ScraperBase):
     def build_response(self) -> requests.Response:
         url = self.base_url + "/api/cs/v2/estates?category_main_cb=1&category_sub_cb="
         url += "|".join(self.get_dispositions_data())
-        url += "&category_type_cb=2&locality_region_id=10&per_page=20"
+        url += "&category_type_cb=2"
+        url += f"&leftBottomBounding={self.location.west}|{self.location.south}"
+        url += f"&rightTopBounding={self.location.east}|{self.location.north}"
+        url += "&per_page=20"
         url += "&tms=" + str(int(time()))
 
         logging.debug("Sreality request: %s", url)

@@ -45,7 +45,7 @@ class ScraperRemax(ScraperBase):
 
 
     def build_response(self) -> requests.Response:
-        url = self.base_url + "?regions%5B19%5D=on&sale=2"
+        url = self.base_url + "?" + self.location.remax_region_query + "&sale=2"
         url += "".join(self.get_dispositions_data())
         url += "&order_by_published_date=0"
 

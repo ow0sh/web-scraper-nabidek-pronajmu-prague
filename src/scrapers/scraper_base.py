@@ -3,6 +3,7 @@ from typing import Any
 
 from requests import Response
 
+from config import LocationConfig
 from disposition import Disposition
 from scrapers.rental_offer import RentalOffer
 from utils import flatten
@@ -35,8 +36,9 @@ class ScraperBase():
     def disposition_mapping(self) -> dict[Disposition, Any]:
         pass
 
-    def __init__(self, disposition: Disposition) -> None:
+    def __init__(self, disposition: Disposition, location: LocationConfig) -> None:
         self.disposition = disposition
+        self.location = location
 
     def get_dispositions_data(self) -> list:
         return list(flatten([self.disposition_mapping[d] for d in self.disposition]))
